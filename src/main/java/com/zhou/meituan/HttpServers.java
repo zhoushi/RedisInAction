@@ -1,6 +1,8 @@
 package com.zhou.meituan;
 
 
+import com.google.common.collect.Lists;
+import com.zhou.json.GsonUtils;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -8,14 +10,19 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.List;
+
 
 /**
  * Created by Administrator on 2017/7/27.
+ * 爬取美团技术点评文章
  */
 public class HttpServers {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(HttpServers.class);
 
     private static final String  url = "https://tech.meituan.com/";
 
@@ -25,7 +32,7 @@ public class HttpServers {
 
 
 
-    public static String getHtml() throws Exception{
+    public static List<Content> getHtml() throws Exception{
 
         OkHttpClient client = new OkHttpClient();
 
@@ -34,39 +41,81 @@ public class HttpServers {
         Request request = new Request.Builder().url(url).addHeader("Cookie",cookie).addHeader("User-Agent",user_Agent).build();
 
         Response response = client.newCall(request).execute();
+        List<Content> contentList = Lists.newArrayList();
 
         if (response.isSuccessful()){
             html=response.body().string().replace("\\", "");
 
             Document doc=Jsoup.parse(html);
 
-            System.out.println(doc);
+            //抓取文字标题和连接
+            Elements script1 = doc.select("header").select("a");
+            //抓取作者
+            Elements scriptAuthor = doc.getElementsByClass("post-meta-author");
+            //抓起发布日期
+            Elements scriptDate = doc.getElementsByClass("post-meta-ctime");
+            //抓取发布简介
+            Elements scriptInto = doc.getElementsByClass("post-abstract");
+            //抓取标签
+            Elements scriptTag = doc.getElementsByClass("post-tags");
 
-            Elements scripts = doc.select("post post-with-tags");//获取post-list 标签内容
-            System.out.println(scripts.toString());
-//            Elements scripts = doc.getElementsByTag("div"); //获取script标签
-            //Element script=scripts.get(scripts.size()-1);  // 获取包含了网页内容的script标签
+            script1.stream().forEach(element -> {
+                Content content = new Content();
+                content.setTitle(element.html());
+                String elementString = element.toString();
+                char c = '"';
+                String[] s = elementString.split(String.valueOf(c));
+                content.setHref("https://tech.meituan.com/"+s[1]);
+                contentList.add(content);
+            });
 
-            //System.out.println(script.html());
-            Pattern p=Pattern.compile("\"html\":\"");    //从该json数据格式中抽取出html内容
-
-            String htmlstr="";
-            for(Element script:scripts){
-                Matcher m=p.matcher(html=script.html());
-                if(m.find()){
-                    String str=html.substring(m.end(),html.length()-3);
-                    htmlstr+=str;
-                }
+            int i = 0;
+            for (Element element:scriptAuthor){
+                Content content = contentList.get(i);
+                content.setAuthor(element.html());
+                i++;
             }
-            html=Jsoup.parse(htmlstr).html();
+            int j = 0;
+            for (Element element:scriptDate){
+                Content content = contentList.get(j);
+                content.setPostTime(element.html());
+                j++;
+            }
+            int n = 0;
+            for (Element element:scriptInto){
+                Content content = contentList.get(n);
+                content.setIntroduction(element.html());
+                n++;
+            }
+
+            int z = 0;
+            for (Element element:scriptTag){
+                List<Tag> tagList = Lists.newArrayList();
+
+                Elements elements = element.select("a");
+                for (Element element1:elements){
+                    Tag tag = new Tag();
+                    tag.setTag(element1.html());
+                    tagList.add(tag);
+                }
+                Content content = contentList.get(z);
+                content.setTag(tagList);
+                z++;
+            }
+
+
+
+            return contentList;
         }else {
-            System.out.println("Network is error");
+            LOGGER.error("content:"+contentList.toString());
         }
-        return html;
+        return contentList;
     }
 
     public static void main(String[] args)throws Exception{
-        String s = getHtml();
-        System.out.println(s);
+        List<Content> s = getHtml();
+
+        System.out.println(GsonUtils.objectToJson(s.get(1)));
+//        System.out.println(s);
     }
 }
